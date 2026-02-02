@@ -12,11 +12,8 @@ RUN npm install
 # Copy source
 COPY . .
 
-# Set dummy env for prisma generate verification (no real connection needed)
-ENV DATABASE_URL="postgresql://dummy:dummy@localhost:5432/dummy"
-
-# Generate Prisma Client
-RUN npx prisma generate
+# Generate Prisma Client with dummy env
+RUN DATABASE_URL="postgresql://dummy:dummy@localhost:5432/dummy" npx prisma generate
 
 # Build
 RUN npm run build
