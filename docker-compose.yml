@@ -1,7 +1,10 @@
 version: '3'
 services:
   helen-app:
-    build: .
+    build:
+      context: .
+      args:
+        - DATABASE_URL=postgresql://dummy:dummy@localhost:5432/dummy
     container_name: helen_os_app
     restart: always
     ports:

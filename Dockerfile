@@ -12,9 +12,12 @@ RUN npm install
 # Copy source
 COPY . .
 
-# Generate Prisma Client with dummy env file
-# (Prisma relies heavily on .env being present or env vars being set correctly, this forces it)
-RUN echo 'DATABASE_URL="postgresql://dummy:dummy@localhost:5432/dummy"' > .env && npx prisma generate
+# Accept build arg and set env
+ARG DATABASE_URL
+ENV DATABASE_URL=${DATABASE_URL}
+
+# Generate Prisma Client
+RUN npx prisma generate
 
 # Build
 RUN npm run build
