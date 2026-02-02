@@ -1,0 +1,57 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model User {
+  id        String    @id @default(cuid())
+  email     String    @unique
+  password  String
+  name      String?
+  role      String    @default("USER") // ADMIN, USER
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  sessions   Session[]
+  subscriptionStart DateTime?
+  interactions      UserContentInteraction[]
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Content {
+  id        String   @id @default(cuid())
+  dayOffset Int      @unique // 1, 2, 3... relative to subscription
+  title     String?
+  media     String   // JSON string: [{ type: 'image', url: '...' }, ...]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  interactions UserContentInteraction[]
+}
+
+model UserContentInteraction {
+  id        String   @id @default(cuid())
+  userId    String
+  contentId String
+  liked     Boolean  @default(false)
+  favorite  Boolean  @default(false)
+  unlockedAt DateTime @default(now())
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  content Content @relation(fields: [contentId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, contentId])
+}

@@ -1,0 +1,7 @@
+{
+  "name": "Helen - Experiencia Privada",
+  "description": "Una plataforma íntima y progresiva donde el contenido se revela a su propio ritmo. Conectada directamente con Shopify para la gestión automática de accesos.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}

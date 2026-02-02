@@ -1,0 +1,13 @@
+version: '3'
+services:
+  helen-app:
+    build: .
+    container_name: helen_os_app
+    restart: always
+    ports:
+      - "80:3000"
+    env_file:
+      - .env
+    volumes:
+      # Persist Uploads (if any are local)
+      - ./public/uploads:/app/public/uploads
