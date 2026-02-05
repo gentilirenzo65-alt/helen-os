@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
-import { Plus, Clock, Image as ImageIcon, Video, Calendar, MoreHorizontal, Eye, Layers, Settings, Trash2, Smartphone, X, Split, Beaker, MessageCircle, Mic, Heart, Send } from 'lucide-react';
+import { Plus, Clock, Image as ImageIcon, Video, Calendar, MoreHorizontal, Eye, Layers, Settings, Trash2, Smartphone, X, Split, Beaker, MessageCircle, Mic, Heart, Send, ArrowUp, ArrowDown } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { ContentItem } from '@/lib/admin/types'; // Keep types, remove MOCK_CONTENT import if possible or ignore it
 
 const ContentSchedulerView: React.FC = () => {
-    const [selectedDay, setSelectedDay] = useState(1);
-    const [timelineDays, setTimelineDays] = useState<number[]>([1, 2, 3, 6, 9, 14, 21, 30, 45, 60]);
+    const [selectedDay, setSelectedDay] = useState<number | null>(null);
+    const [timelineDays, setTimelineDays] = useState<number[]>([]);
     const [showAddDayInput, setShowAddDayInput] = useState(false);
     const [newDayValue, setNewDayValue] = useState('');
 
@@ -14,20 +14,53 @@ const ContentSchedulerView: React.FC = () => {
     const [contentList, setContentList] = useState<ContentItem[]>([]);
     const [isUploading, setIsUploading] = useState(false);
     const [showUploadModal, setShowUploadModal] = useState(false);
-    const [selectedFile, setSelectedFile] = useState<File | null>(null);
+    const [selectedFile, setSelectedFile] = useState<File[]>([]);
 
-    // Fetch content from API on mount
+    // Helper to save timeline to local storage
+    const saveTimelineToLocal = (days: number[]) => {
+        if (typeof window !== 'undefined') {
+            localStorage.setItem('helen_timeline_days', JSON.stringify(days));
+        }
+    };
+
+    // Fetch content from API on mount and sync timeline
     React.useEffect(() => {
-        fetch('/api/admin/content')
-            .then(res => res.json())
-            .then(data => {
-                // Map DB content to UI format if needed, for now assume direct map or basic
-                // The API returns parsed JSON media.
-                // We need to adapt it to ContentItem type if specific fields differ.
-                // For now, let's just set it and see.
-                if (Array.isArray(data)) setContentList(data);
-            })
-            .catch(err => console.error(err));
+        const fetchContent = async () => {
+            try {
+                const res = await fetch('/api/admin/content');
+                const data = await res.json();
+
+                if (Array.isArray(data)) {
+                    // Normalize: ensure releaseDay is set from dayOffset
+                    const normalizedData = data.map((item: any) => ({
+                        ...item,
+                        releaseDay: item.dayOffset || item.releaseDay,
+                        media: typeof item.media === 'string' ? JSON.parse(item.media) : item.media
+                    }));
+
+                    setContentList(normalizedData);
+
+                    // 1. Get days that DEFINITELY exist (have content)
+                    const daysWithContent = Array.from(new Set(normalizedData.map((item: any) => item.releaseDay))).map(Number).filter(d => !isNaN(d));
+
+                    // 2. Get days from LocalStorage (User's planned structure)
+                    const savedDaysStr = localStorage.getItem('helen_timeline_days');
+                    const savedDays = savedDaysStr ? JSON.parse(savedDaysStr) : [];
+
+                    // 3. Merge: Content Override (Real) + Planned (Virtual) -> NO DEFAULTS
+                    const combinedDays = Array.from(new Set([...daysWithContent, ...savedDays])).map(Number).sort((a, b) => a - b);
+
+                    setTimelineDays(combinedDays);
+                    if (combinedDays.length > 0 && selectedDay === null) {
+                        setSelectedDay(combinedDays[0]);
+                    }
+                }
+            } catch (err) {
+                console.error(err);
+            }
+        };
+
+        fetchContent();
     }, []);
 
     // Helper to get content for a specific day
@@ -38,87 +71,138 @@ const ContentSchedulerView: React.FC = () => {
         if (day && !timelineDays.includes(day)) {
             const newDays = [...timelineDays, day].sort((a, b) => a - b);
             setTimelineDays(newDays);
+            saveTimelineToLocal(newDays);
             setSelectedDay(day);
             setNewDayValue('');
             setShowAddDayInput(false);
         }
     };
 
-    const handleUpload = async () => {
-        if (!selectedFile) return;
+    const handleUpload = async (unlockHour: number = 0) => {
+        if (!selectedDay) {
+            alert("Por favor selecciona un día primero.");
+            return;
+        }
+        if (selectedFile.length === 0) return;
         setIsUploading(true);
 
         try {
-            // 1. Upload to Supabase Storage
-            const fileExt = selectedFile.name.split('.').pop();
-            const fileName = `${Date.now()}.${fileExt}`;
-            const { data: uploadData, error: uploadError } = await supabase.storage
-                .from('content')
-                .upload(fileName, selectedFile);
+            const uploadedMedia = [];
 
-            if (uploadError) throw uploadError;
+            // 1. Upload All Files to Supabase Storage
+            for (const file of selectedFile) {
+                const fileExt = file.name.split('.').pop();
+                const fileName = `${Date.now()}_${Math.random().toString(36).substr(2, 9)}.${fileExt}`;
 
-            // 2. Get Public URL
-            const { data: { publicUrl } } = supabase.storage
-                .from('content')
-                .getPublicUrl(fileName);
+                const { error: uploadError } = await supabase.storage
+                    .from('media')
+                    .upload(fileName, file);
 
-            // 3. Construct Media Object (Single item for now, can be array later)
-            const fileType = selectedFile.type.startsWith('image') ? 'image' : 'video';
-            const media = [{ type: fileType, url: publicUrl }];
+                if (uploadError) throw uploadError;
 
-            // 4. Save to DB
+                const { data: { publicUrl } } = supabase.storage
+                    .from('media')
+                    .getPublicUrl(fileName);
+
+                const fileType = file.type.startsWith('image') ? 'image' : 'video';
+                uploadedMedia.push({ type: fileType, url: publicUrl });
+            }
+
+            // 2. Save to DB (Single Content Item with Multiple Media)
             const response = await fetch('/api/admin/content', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     day: selectedDay,
-                    media: media,
-                    title: `Contenido Día ${selectedDay}`
+                    media: uploadedMedia,
+                    title: `Contenido Día ${selectedDay}`,
+                    type: 'post',
+                    unlockHour: unlockHour
                 }),
             });
 
-            if (!response.ok) throw new Error('Failed to save to DB');
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.error || 'Failed to save to DB');
+            }
 
             const savedContent = await response.json();
 
-            // 5. Update Local State (Refresh list)
-            // Simplified mapping for now
+            // 3. Update Local State
             const newItem: ContentItem = {
                 id: savedContent.id,
                 title: savedContent.title || `Día ${selectedDay}`,
-                contentType: 'post', // Default
-                media: savedContent.media ? JSON.parse(savedContent.media) : media, // Handle logic double parse check
+                contentType: 'post',
+                media: savedContent.media ? JSON.parse(savedContent.media) : uploadedMedia,
                 uploadDate: new Date().toISOString().split('T')[0],
                 releaseDay: savedContent.dayOffset,
-                unlockRule: { type: 'immediate' },
+                unlockRule: { type: unlockHour > 0 ? 'delay' : 'immediate', value: unlockHour > 0 ? `${unlockHour}hs` : undefined },
                 likes: 0,
                 commentsCount: 0
             };
 
-            setContentList(prev => [...prev.filter(c => c.id !== newItem.id), newItem]); // Upsert logic in UI
+            setContentList(prev => [...prev.filter(c => c.id !== newItem.id), newItem]); // Add new item, keeping others
             setShowUploadModal(false);
-            setSelectedFile(null);
+            setSelectedFile([]);
 
-        } catch (error) {
+            // Ensure this day is saved in local timeline
+            if (selectedDay && !timelineDays.includes(selectedDay)) {
+                // selectedDay is ensured to be number via the check above, but TS might need help or the flow guarantees it
+                const newDays = [...timelineDays, selectedDay].sort((a, b) => a - b);
+                setTimelineDays(newDays);
+                saveTimelineToLocal(newDays);
+            }
+
+        } catch (error: any) {
             console.error('Upload failed:', error);
-            alert('Error subiendo contenido');
+            const errorMessage = error?.message || error?.error_description || JSON.stringify(error);
+            alert(`Error subiendo contenido: ${errorMessage}`);
         } finally {
             setIsUploading(false);
         }
     };
 
-    const handleDeleteDay = (e: React.MouseEvent, dayToDelete: number) => {
+    const handleDeleteContent = async (id: string, e: React.MouseEvent) => {
         e.stopPropagation();
-        if (timelineDays.length <= 1) return; // Prevent deleting the last day
+        if (!confirm('¿Estás seguro de eliminar este contenido?')) return;
+
+        try {
+            const res = await fetch(`/api/admin/content?id=${id}`, { method: 'DELETE' });
+            if (res.ok) {
+                setContentList(prev => prev.filter(item => item.id !== id));
+            } else {
+                alert('No se pudo eliminar el contenido');
+            }
+        } catch (error) {
+            console.error(error);
+            alert('Error al conectar con el servidor');
+        }
+    };
+
+    const handleDeleteDay = async (e: React.MouseEvent, dayToDelete: number) => {
+        e.stopPropagation();
+        const dayContent = getContentForDay(dayToDelete);
+
+        if (dayContent.length > 0) {
+            if (!confirm(`El Día ${dayToDelete} tiene ${dayContent.length} elementos. ¿Eliminar TODO el contenido de este día permanentemente?`)) return;
+            for (const item of dayContent) {
+                try { await fetch(`/api/admin/content?id=${item.id}`, { method: 'DELETE' }); }
+                catch (err) { console.error('Error deleting item', item.id, err); }
+            }
+            setContentList(prev => prev.filter(c => c.releaseDay !== dayToDelete));
+        }
+
         const newDays = timelineDays.filter(d => d !== dayToDelete);
         setTimelineDays(newDays);
+        saveTimelineToLocal(newDays);
+
         if (selectedDay === dayToDelete) {
-            setSelectedDay(newDays[0]);
+            setSelectedDay(newDays.length > 0 ? newDays[0] : null);
         }
     };
 
     const getUnlockRuleLabel = (rule: ContentItem['unlockRule']) => {
+        if (!rule) return 'Inmediato';
         switch (rule.type) {
             case 'immediate': return 'Inmediato';
             case 'delay': return `Espera ${rule.value}`;
@@ -183,43 +267,158 @@ const ContentSchedulerView: React.FC = () => {
         );
     };
 
-    const stories = getContentForDay(selectedDay).filter(i => i.contentType === 'story');
-    const feed = getContentForDay(selectedDay).filter(i => i.contentType !== 'story');
+    const stories = selectedDay ? getContentForDay(selectedDay).filter(i => i.contentType === 'story') : [];
+    const feed = selectedDay ? getContentForDay(selectedDay).filter(i => i.contentType !== 'story') : [];
 
     return (
         <div className="p-8 h-full flex flex-col relative">
 
 
-            {/* Upload Modal */}
+            {/* Advanced Upload Modal */}
             {showUploadModal && (
                 <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-                    <div className="bg-white rounded-2xl p-6 w-[400px] shadow-2xl">
-                        <h3 className="text-xl font-bold mb-4">Subir Contenido (Día {selectedDay})</h3>
-                        <div className="border-2 border-dashed border-gray-300 rounded-xl p-8 flex flex-col items-center justify-center mb-4 bg-gray-50 hover:bg-gray-100 transition-colors cursor-pointer relative">
+                    <div className="bg-white rounded-2xl p-6 w-[500px] shadow-2xl max-h-[90vh] overflow-y-auto">
+                        <div className="flex justify-between items-center mb-6">
+                            <h3 className="text-xl font-bold text-gray-800">Subir Contenido (Día {selectedDay})</h3>
+                            <button onClick={() => setShowUploadModal(false)} className="text-gray-400 hover:text-gray-600">
+                                <X size={24} />
+                            </button>
+                        </div>
+
+                        {/* 1. File Selection Area */}
+                        <div className="border-2 border-dashed border-gray-300 rounded-xl p-8 flex flex-col items-center justify-center mb-6 bg-gray-50 hover:bg-gray-100 transition-colors cursor-pointer relative">
                             <input
                                 type="file"
+                                multiple
                                 className="absolute inset-0 opacity-0 cursor-pointer"
-                                onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
+                                onChange={(e) => {
+                                    if (e.target.files) {
+                                        const newFiles = Array.from(e.target.files);
+                                        // Append new files to existing selection
+                                        setSelectedFile(prev => [...prev, ...newFiles]);
+                                    }
+                                }}
                                 accept="image/*,video/*"
                             />
                             <Plus size={32} className="text-gray-400 mb-2" />
-                            <p className="text-sm text-gray-500">
-                                {selectedFile ? selectedFile.name : 'Click para elegir archivo'}
-                            </p>
+                            <p className="text-sm text-gray-500 font-medium">Click para elegir imágenes/videos</p>
+                            <p className="text-xs text-gray-400 mt-1">Soporta selección múltiple</p>
                         </div>
-                        <div className="flex gap-3 justify-end">
+
+                        {/* 2. Selected Files Preview & Sorting */}
+                        {selectedFile.length > 0 && (
+                            <div className="mb-6">
+                                <h4 className="text-sm font-bold text-gray-700 mb-3 flex justify-between">
+                                    <span>Orden del Carrusel</span>
+                                    <span className="text-xs font-normal text-gray-500">Usa las flechas para ordenar</span>
+                                </h4>
+                                <div className="space-y-2">
+                                    {selectedFile.map((file: any, idx: number, arr: any[]) => (
+                                        <div key={idx} className="flex items-center gap-3 p-2 bg-white border border-gray-200 rounded-lg shadow-sm">
+                                            <div className="w-6 text-center font-bold text-gray-300 text-xs">{idx + 1}</div>
+                                            <div className="w-10 h-10 rounded bg-gray-100 overflow-hidden flex-shrink-0">
+                                                {file.type.startsWith('video') ? (
+                                                    <div className="w-full h-full flex items-center justify-center text-gray-400"><Video size={16} /></div>
+                                                ) : (
+                                                    <img src={URL.createObjectURL(file)} className="w-full h-full object-cover" alt="preview" />
+                                                )}
+                                            </div>
+                                            <div className="flex-1 min-w-0">
+                                                <p className="text-sm text-gray-700 truncate">{file.name}</p>
+                                                <p className="text-xs text-gray-400">{(file.size / 1024 / 1024).toFixed(2)} MB</p>
+                                            </div>
+                                            <div className="flex gap-1">
+                                                <button
+                                                    onClick={() => {
+                                                        const newFiles = [...selectedFile];
+                                                        if (idx > 0) {
+                                                            [newFiles[idx], newFiles[idx - 1]] = [newFiles[idx - 1], newFiles[idx]];
+                                                            setSelectedFile(newFiles);
+                                                        }
+                                                    }}
+                                                    disabled={idx === 0}
+                                                    className="p-1 text-gray-400 hover:text-accent disabled:opacity-30"
+                                                >
+                                                    <ArrowUp size={16} />
+                                                </button>
+                                                <button
+                                                    onClick={() => {
+                                                        const newFiles = [...selectedFile];
+                                                        if (idx < arr.length - 1) {
+                                                            [newFiles[idx], newFiles[idx + 1]] = [newFiles[idx + 1], newFiles[idx]];
+                                                            setSelectedFile(newFiles);
+                                                        }
+                                                    }}
+                                                    disabled={idx === arr.length - 1}
+                                                    className="p-1 text-gray-400 hover:text-accent disabled:opacity-30"
+                                                >
+                                                    <ArrowDown size={16} />
+                                                </button>
+                                                <button
+                                                    onClick={() => {
+                                                        const newFiles = [...selectedFile].filter((_, i) => i !== idx);
+                                                        setSelectedFile(newFiles);
+                                                    }}
+                                                    className="p-1 text-gray-400 hover:text-red-500"
+                                                >
+                                                    <Trash2 size={16} />
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* 3. Settings: Unlock Time */}
+                        <div className="mb-8">
+                            <label className="block text-sm font-bold text-gray-700 mb-2">
+                                Regla de Desbloqueo
+                            </label>
+                            <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl border border-gray-200">
+                                <Clock size={20} className="text-gray-500" />
+                                <div className="flex-1">
+                                    <p className="text-sm font-medium text-gray-900">Horas desde inicio del Día</p>
+                                    <p className="text-xs text-gray-500">0 = Apenas comienza el día {selectedDay}</p>
+                                </div>
+                                <input
+                                    type="number"
+                                    min="0"
+                                    defaultValue="0"
+                                    id="unlockHourInput"
+                                    className="w-20 p-2 text-right font-mono text-sm border border-gray-300 rounded-lg focus:border-accent outline-none"
+                                />
+                                <span className="text-sm text-gray-500">Hs</span>
+                            </div>
+                        </div>
+
+                        <div className="flex gap-3 justify-end pt-4 border-t border-gray-100">
                             <button
                                 onClick={() => setShowUploadModal(false)}
-                                className="px-4 py-2 text-gray-600 font-medium"
+                                className="px-5 py-2.5 text-gray-600 font-medium hover:bg-gray-100 rounded-xl transition-colors"
                             >
                                 Cancelar
                             </button>
                             <button
-                                onClick={handleUpload}
-                                disabled={!selectedFile || isUploading}
-                                className={`px-4 py-2 bg-accent text-white rounded-lg font-medium shadow-sm flex items-center gap-2 ${isUploading ? 'opacity-50' : 'hover:bg-accent-hover'}`}
+                                onClick={() => {
+                                    // Hack to get value from uncontrolled input
+                                    const hour = (document.getElementById('unlockHourInput') as HTMLInputElement).value;
+                                    handleUpload(Number(hour));
+                                }}
+                                disabled={selectedFile.length === 0 || isUploading}
+                                className={`px-5 py-2.5 bg-gray-900 text-white rounded-xl font-medium shadow-lg shadow-gray-200 flex items-center gap-2 ${isUploading ? 'opacity-50 cursor-not-allowed' : 'hover:bg-black transform active:scale-95 transition-all'}`}
                             >
-                                {isUploading ? 'Subiendo...' : 'Publicar'}
+                                {isUploading ? (
+                                    <>
+                                        <Layers className="animate-spin" size={18} />
+                                        Subiendo...
+                                    </>
+                                ) : (
+                                    <>
+                                        <Plus size={18} />
+                                        Publicar Contenido
+                                    </>
+                                )}
                             </button>
                         </div>
                     </div>
@@ -329,7 +528,10 @@ const ContentSchedulerView: React.FC = () => {
                         <Beaker size={18} />
                         <span>Crear Test A/B</span>
                     </button>
-                    <button className="bg-sidebar hover:bg-gray-800 text-white px-5 py-2.5 rounded-xl flex items-center gap-2 transition-all shadow-lg shadow-gray-200">
+                    <button
+                        onClick={() => setShowUploadModal(true)}
+                        className="bg-sidebar hover:bg-gray-800 text-white px-5 py-2.5 rounded-xl flex items-center gap-2 transition-all shadow-lg shadow-gray-200"
+                    >
                         <Plus size={18} />
                         <span>Nuevo Contenido</span>
                     </button>
@@ -418,11 +620,21 @@ const ContentSchedulerView: React.FC = () => {
                     </div>
 
                     <div className="flex-1 bg-white rounded-b-2xl shadow-sm border border-slate-100 p-6 overflow-y-auto">
-                        {getContentForDay(selectedDay).length === 0 ? (
+                        {selectedDay === null ? (
+                            <div className="h-full flex flex-col items-center justify-center text-gray-400 border-2 border-dashed border-gray-200 rounded-xl">
+                                <Layers size={48} className="mb-4 opacity-50" />
+                                <p className="font-medium">Selecciona un día para ver el contenido</p>
+                            </div>
+                        ) : getContentForDay(selectedDay).length === 0 ? (
                             <div className="h-full flex flex-col items-center justify-center text-gray-400 border-2 border-dashed border-gray-200 rounded-xl">
                                 <Layers size={48} className="mb-4 opacity-50" />
                                 <p className="font-medium">No hay contenido programado para el día {selectedDay}</p>
-                                <button className="mt-4 text-accent font-medium hover:underline">Agregar contenido ahora</button>
+                                <button
+                                    onClick={() => setShowUploadModal(true)}
+                                    className="mt-4 text-accent font-medium hover:underline"
+                                >
+                                    Agregar contenido ahora
+                                </button>
                             </div>
                         ) : (
                             <div className="space-y-4">
@@ -511,7 +723,11 @@ const ContentSchedulerView: React.FC = () => {
                                                                 <button className="p-2 text-gray-400 hover:text-accent hover:bg-accent/10 rounded-lg transition-colors" title="Editar tiempo">
                                                                     <Clock size={18} />
                                                                 </button>
-                                                                <button className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors" title="Eliminar">
+                                                                <button
+                                                                    className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                                                                    title="Eliminar"
+                                                                    onClick={(e) => handleDeleteContent(item.id, e)}
+                                                                >
                                                                     <Trash2 size={18} />
                                                                 </button>
                                                             </div>

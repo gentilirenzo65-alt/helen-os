@@ -7,7 +7,6 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
 }
 
 model User {
@@ -18,9 +17,23 @@ model User {
   role      String    @default("USER") // ADMIN, USER
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
-  sessions   Session[]
-  subscriptionStart DateTime?
+  
+  // User Stats & Profile
+  interests       String[]  @default([])
+  engagementScore Int       @default(0)
+  lastActiveAt    DateTime  @default(now())
+  
+  // Subscription & Access Control
+  status            String    @default("ACTIVE") // ACTIVE, PAST_DUE, CANCELED
+  subscriptionStart DateTime? @default(now())
+  subscriptionEnd   DateTime? // Access granted until this date
+  renewalCount      Int       @default(0) // 0 = 1st month, 1 = 2nd month...
+  
+  sessions          Session[]
   interactions      UserContentInteraction[]
+  payments          PaymentLog[]
+  supportTickets    SupportTicket[]
+  passwordResets    PasswordReset[]
 }
 
 model Session {
@@ -32,11 +45,28 @@ model Session {
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
+model PaymentLog {
+  id          String   @id @default(cuid())
+  userId      String
+  amount      Float
+  currency    String   @default("USD")
+  status      String   // SUCCEEDED, FAILED, PENDING
+  provider    String   @default("SHOPIFY")
+  externalId  String?  // Shopify Order ID
+  cycle       Int      @default(1) // 1st payment, 2nd payment...
+  createdAt   DateTime @default(now())
+
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
 model Content {
   id        String   @id @default(cuid())
-  dayOffset Int      @unique // 1, 2, 3... relative to subscription
+  dayOffset Int      // 1, 2, 3... relative to subscription (Not Unique anymore)
   title     String?
+  type      String   @default("post") // post, story, chat
   media     String   // JSON string: [{ type: 'image', url: '...' }, ...]
+  unlockHour Int     @default(0) // Hours delay from day start (0 = immediate)
+  order     Int      @default(0)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   
@@ -49,10 +79,66 @@ model UserContentInteraction {
   contentId String
   liked     Boolean  @default(false)
   favorite  Boolean  @default(false)
+  note      String?  // User private note
   unlockedAt DateTime @default(now())
 
   user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
   content Content @relation(fields: [contentId], references: [id], onDelete: Cascade)
 
   @@unique([userId, contentId])
+}
+
+model SupportTicket {
+  id        String   @id @default(cuid())
+  userId    String
+  subject   String
+  status    String   @default("OPEN") // OPEN, RESOLVED
+  priority  String   @default("NORMAL") // NORMAL, HIGH
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user     User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages SupportMessage[]
+}
+
+model SupportMessage {
+  id        String   @id @default(cuid())
+  ticketId  String
+  sender    String   // USER, ADMIN
+  text      String
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  ticket SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+}
+
+// App-wide settings (key-value store)
+model Settings {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String
+  updatedAt DateTime @updatedAt
+}
+
+// Password reset tokens
+model PasswordReset {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// Shopify Store configurations (multi-store support)
+model ShopifyStore {
+  id            String   @id @default(cuid())
+  name          String   // Display name (e.g., "Helen's Store")
+  domain        String   @unique // mystore.myshopify.com
+  webhookSecret String   // Shopify webhook secret for HMAC verification
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 }

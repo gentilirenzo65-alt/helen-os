@@ -18,10 +18,12 @@ export interface MediaItem {
 export interface ContentItem {
   id: string;
   title: string;
-  contentType: 'post' | 'story' | 'chat'; // New field to distinguish content types
-  media: MediaItem[]; // Array to support single or carousel
+  contentType: 'post' | 'story' | 'chat';
+  media: MediaItem[];
   uploadDate: string;
-  releaseDay: number; 
+  releaseDay: number;
+  dayOffset?: number; // Alternative name from DB
+  unlockHour?: number; // Hour offset for unlock timing
   unlockRule: {
     type: 'immediate' | 'delay' | 'fixed_time';
     value?: string; // e.g., "2h" or "14:00"

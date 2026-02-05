@@ -1,23 +1,30 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Delivery, Interaction, MediaItem } from '@/lib/user/types';
+import UserSupportModal from './UserSupportModal';
 
 interface UserTimelineProps {
   activationDate: string;
+  subscriptionEnd?: string | null;
   deliveries: Delivery[];
   favorites: string[];
   onInteract: (interaction: Omit<Interaction, 'timestamp'>) => void;
   onToggleFavorite: (deliveryId: string) => void;
-  xp: number; // New prop for gamification
+  xp: number;
+  creatorAvatar?: string; // Creator's avatar URL (set from admin)
+  userName?: string; // User's display name
+  userEmail?: string; // User's email
 }
 
 type Tab = 'home' | 'favorites' | 'gallery';
-type Overlay = 'profile' | 'support' | 'note-modal' | 'fullscreen' | null;
+type Overlay = 'profile' | 'support-modal' | 'note-modal' | 'fullscreen' | null;
 
 // Gamification Constants
 const XP_PER_LEVEL = 100;
 
-const UserTimeline: React.FC<UserTimelineProps> = ({ activationDate, deliveries, favorites, onInteract, onToggleFavorite, xp }) => {
+const UserTimeline: React.FC<UserTimelineProps> = ({ activationDate, subscriptionEnd, deliveries, favorites, onInteract, onToggleFavorite, xp, creatorAvatar, userName, userEmail }) => {
+  // Default avatar if none set
+  const avatarUrl = creatorAvatar || 'https://images.unsplash.com/photo-1544965850-6f8a66788f9b?q=80&w=200&auto=format&fit=crop';
   const [now, setNow] = useState(new Date());
   const [activeTab, setActiveTab] = useState<Tab>('home');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -25,6 +32,7 @@ const UserTimeline: React.FC<UserTimelineProps> = ({ activationDate, deliveries,
   const [selectedDeliveryForNote, setSelectedDeliveryForNote] = useState<string | null>(null);
   const [fullscreenMedia, setFullscreenMedia] = useState<{ items: MediaItem[], initialIndex: number, deliveryId: string } | null>(null);
   const [noteText, setNoteText] = useState('');
+  const [supportUnreadCount, setSupportUnreadCount] = useState(0);
 
   // Floating XP Particles state
   const [particles, setParticles] = useState<{ id: number, x: number, y: number, val: string }[]>([]);
@@ -105,6 +113,16 @@ const UserTimeline: React.FC<UserTimelineProps> = ({ activationDate, deliveries,
     setFullscreenMedia(null);
   };
 
+  const handleLogout = async () => {
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+      window.location.href = '/login';
+    } catch (error) {
+      console.error('Error al cerrar sesión:', error);
+      window.location.href = '/login';
+    }
+  };
+
   const handleOpenNote = (id: string) => {
     setSelectedDeliveryForNote(id);
     setActiveOverlay('note-modal');
@@ -112,6 +130,13 @@ const UserTimeline: React.FC<UserTimelineProps> = ({ activationDate, deliveries,
 
   return (
     <div className="min-h-screen pb-28 text-white/90 relative overflow-x-hidden">
+
+      {/* Support Modal */}
+      <UserSupportModal
+        isOpen={activeOverlay === 'support-modal'}
+        onClose={closeOverlays}
+        onUnreadCountChange={setSupportUnreadCount}
+      />
 
       {/* XP Particles */}
       {particles.map(p => (
@@ -147,25 +172,20 @@ const UserTimeline: React.FC<UserTimelineProps> = ({ activationDate, deliveries,
             icon={<path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />}
             label="Mi Perfil"
           />
-          {/* Level Indicator in Menu */}
-          <div className="px-2 py-4 bg-white/5 rounded-xl border border-white/5">
-            <div className="flex justify-between items-end mb-2">
-              <span className="text-[10px] uppercase tracking-widest text-white/40">Nivel de Obsesión</span>
-              <span className="text-xl font-serif italic text-[#e9c46a]">{currentLevel}</span>
-            </div>
-            <div className="h-1 bg-white/10 rounded-full overflow-hidden">
-              <div className="h-full bg-[#e9c46a]" style={{ width: `${progressToNext}%` }} />
-            </div>
-            <p className="text-[9px] text-white/30 mt-2 text-right">{Math.floor(XP_PER_LEVEL - (xp % XP_PER_LEVEL))} XP para el siguiente nivel</p>
-          </div>
 
           <SidebarItem
-            onClick={() => setActiveOverlay('support')}
+            onClick={() => setActiveOverlay('support-modal')}
             icon={<path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M18.364 5.636l-3.536 3.536m0 5.656l3.536 3.536M9.172 9.172L5.636 5.636m3.536 9.192l-3.536 3.536M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-5 0a4 4 0 11-8 0 4 4 0 018 0z" />}
             label="Soporte"
+            badge={supportUnreadCount > 0 ? supportUnreadCount : undefined}
           />
           <div className="pt-8 mt-8 border-t border-white/5">
-            <SidebarItem icon={<path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />} label="Cerrar sesión" danger />
+            <SidebarItem
+              icon={<path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />}
+              label="Cerrar sesión"
+              danger
+              onClick={handleLogout}
+            />
           </div>
         </nav>
       </aside>
@@ -182,7 +202,7 @@ const UserTimeline: React.FC<UserTimelineProps> = ({ activationDate, deliveries,
       )}
 
       {/* Other Overlays */}
-      {activeOverlay && activeOverlay !== 'fullscreen' && (
+      {activeOverlay && activeOverlay !== 'fullscreen' && activeOverlay !== 'support-modal' && (
         <div className="fixed inset-0 z-[300] flex items-center justify-center p-6 animate-reveal">
           <div className="absolute inset-0 bg-black/90 backdrop-blur-xl" onClick={closeOverlays} />
           <div className="relative w-full max-w-sm bg-[#1a1418] border border-white/10 rounded-[40px] p-8 shadow-2xl overflow-hidden">
@@ -194,36 +214,33 @@ const UserTimeline: React.FC<UserTimelineProps> = ({ activationDate, deliveries,
 
             {activeOverlay === 'profile' && (
               <div className="space-y-6">
-                <div className="text-center mb-8">
-                  <div className="w-20 h-20 rounded-full mx-auto border border-white/10 p-1 mb-4 shadow-[0_0_20px_rgba(255,255,255,0.1)] relative">
-                    <img src="https://images.unsplash.com/photo-1544965850-6f8a66788f9b?q=80&w=200&auto=format&fit=crop" className="w-full h-full object-cover rounded-full" alt="" />
-                    {/* XP Badge */}
-                    <div className="absolute -bottom-2 -right-2 bg-[#e9c46a] text-black text-[10px] font-bold px-2 py-1 rounded-full shadow-lg border border-black">
-                      LVL {currentLevel}
-                    </div>
+                {/* User Avatar/Initial */}
+                <div className="flex justify-center">
+                  <div className="w-20 h-20 rounded-full bg-gradient-to-br from-[#e9c46a] to-[#d4a373] flex items-center justify-center text-3xl font-bold text-black shadow-lg">
+                    {(userName || 'U').charAt(0).toUpperCase()}
                   </div>
-                  <h3 className="serif italic text-2xl">Mi Cuenta</h3>
-                  <div className="w-full bg-white/5 h-1.5 rounded-full mt-4 overflow-hidden">
-                    <div className="bg-[#e9c46a] h-full transition-all duration-1000" style={{ width: `${progressToNext}%` }}></div>
-                  </div>
-                  <p className="text-[9px] text-white/40 mt-1 uppercase tracking-widest">{Math.floor(xp)} Puntos de Obsesión</p>
                 </div>
-                <div className="space-y-4">
-                  <ProfileDetail label="Estado" value="Conectado" color="text-green-400" />
-                  <ProfileDetail label="Nivel Actual" value={currentLevel === 1 ? "Curioso" : currentLevel === 2 ? "Interesado" : "Obsesionado"} />
-                  <ProfileDetail label="Revelado" value={`${unlockedItems.length} momentos`} />
-                </div>
-              </div>
-            )}
 
-            {activeOverlay === 'support' && (
-              <div className="space-y-6">
-                <div className="text-center mb-8">
-                  <h3 className="serif italic text-2xl">Soporte</h3>
+                {/* User Name */}
+                <div className="text-center">
+                  <h3 className="text-xl font-bold text-white">{userName || 'Usuario'}</h3>
+                  <p className="text-xs text-white/40 mt-1">{userEmail}</p>
                 </div>
-                <div className="space-y-3">
-                  <SupportAction icon="📄" label="Políticas de Privacidad" desc="Tus datos están seguros" />
-                  <SupportAction icon="💬" label="Chat con Soporte" desc="Resolución de dudas 24/7" />
+
+                {/* Stats */}
+                <div className="space-y-3 pt-4">
+                  <ProfileDetail
+                    label="Miembro desde"
+                    value={new Date(activationDate).toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' })}
+                  />
+                  {subscriptionEnd && (
+                    <ProfileDetail
+                      label="Próxima renovación"
+                      value={new Date(subscriptionEnd).toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' })}
+                      color="text-green-400"
+                    />
+                  )}
+                  <ProfileDetail label="Favoritos" value={`${favorites.length} guardados`} />
                 </div>
               </div>
             )}
@@ -267,7 +284,7 @@ const UserTimeline: React.FC<UserTimelineProps> = ({ activationDate, deliveries,
           onClick={() => setActiveOverlay('profile')}
         >
           <img
-            src="https://images.unsplash.com/photo-1544965850-6f8a66788f9b?q=80&w=100&auto=format&fit=crop"
+            src={avatarUrl}
             alt="P"
             className="w-full h-full object-cover transition-transform duration-500 ease-out group-hover:scale-110"
           />
@@ -290,29 +307,6 @@ const UserTimeline: React.FC<UserTimelineProps> = ({ activationDate, deliveries,
 
         {activeTab === 'home' && (
           <div className="space-y-14 animate-reveal relative z-10 pb-10">
-            {/* --- THE CASINO HOOK: A LOCKED BONUS CARD --- */}
-            {/* This card is always position 2 (after welcome), locked by level, not time. */}
-            {currentLevel < 2 && (
-              <TimelineItem isUnlocked={false}>
-                <div className="relative rounded-[32px] overflow-hidden bg-[#1a1418] border border-[#e9c46a]/30 aspect-[4/5] w-full flex flex-col items-center justify-center shadow-[0_0_30px_rgba(233,196,106,0.1)] group">
-                  <img src="https://images.unsplash.com/photo-1517841905240-472988babdf9?q=80&w=1000&auto=format&fit=crop" className="absolute inset-0 w-full h-full object-cover blur-[50px] opacity-20" alt="" />
-                  <div className="relative z-10 flex flex-col items-center p-6 text-center">
-                    <div className="w-16 h-16 rounded-full bg-[#e9c46a]/10 border border-[#e9c46a]/50 flex items-center justify-center text-[#e9c46a] mb-4 shadow-[0_0_20px_rgba(233,196,106,0.2)] animate-pulse">
-                      <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                    </div>
-                    <h3 className="serif italic text-2xl text-[#e9c46a] mb-2">Secreto de Nivel 2</h3>
-                    <p className="text-[10px] text-white/60 mb-6 max-w-[200px] leading-relaxed">
-                      Este contenido no se desbloquea con el tiempo. Necesitas demostrar tu obsesión.
-                    </p>
-                    <div className="w-full bg-white/5 h-2 rounded-full overflow-hidden mb-2">
-                      <div className="bg-[#e9c46a] h-full" style={{ width: `${progressToNext}%` }} />
-                    </div>
-                    <p className="text-[9px] uppercase tracking-widest text-[#e9c46a] font-bold">Faltan {Math.floor(XP_PER_LEVEL - (xp % XP_PER_LEVEL))} XP</p>
-                  </div>
-                </div>
-              </TimelineItem>
-            )}
-
             {homeUnlocked.map((item) => (
               <TimelineItem key={item.id} isUnlocked>
                 <UnlockedCard
@@ -326,6 +320,7 @@ const UserTimeline: React.FC<UserTimelineProps> = ({ activationDate, deliveries,
                 />
               </TimelineItem>
             ))}
+
             {homeLocked.map((item) => (
               <TimelineItem key={item.id} isUnlocked={false}>
                 <LockedCard delivery={item} />
@@ -590,14 +585,25 @@ const SupportAction: React.FC<{ icon: string, label: string, desc: string }> = (
   </button>
 );
 
-const SidebarItem: React.FC<{ icon: React.ReactNode, label: string, danger?: boolean, onClick?: () => void }> = ({ icon, label, danger, onClick }) => (
-  <button onClick={onClick} className={`flex items-center space-x-5 w-full p-2 rounded-lg transition-all ${danger ? 'text-red-400/50 hover:text-red-400' : 'text-white/40 hover:text-white'}`}>
-    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      {icon}
-    </svg>
-    <span className="text-[11px] uppercase tracking-[0.2em] font-medium">{label}</span>
-  </button>
-);
+const SidebarItem: React.FC<{ icon: React.ReactNode, label: string, danger?: boolean, onClick?: () => void, badge?: number }> = ({ icon, label, danger, onClick, badge }) => {
+  const hasBadge = typeof badge === 'number' && badge > 0;
+
+  return (
+    <button onClick={onClick} className={`flex items-center space-x-5 w-full p-2 rounded-lg transition-all relative ${danger ? 'text-red-400/50 hover:text-red-400' : 'text-white/40 hover:text-white'} ${hasBadge ? 'text-[#e9c46a]' : ''}`}>
+      <div className="relative">
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          {icon}
+        </svg>
+        {hasBadge && (
+          <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1">
+            {badge > 9 ? '9+' : badge}
+          </span>
+        )}
+      </div>
+      <span className="text-[11px] uppercase tracking-[0.2em] font-medium">{label}</span>
+    </button>
+  );
+};
 
 const NavIcon: React.FC<{ label: string, active: boolean, onClick: () => void, children: React.ReactNode }> = ({ label, active, onClick, children }) => (
   <button onClick={onClick} className={`flex flex-col items-center group ${active ? 'text-white' : 'text-white/20'}`}>

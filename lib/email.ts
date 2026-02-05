@@ -1,0 +1,118 @@
+import { Resend } from 'resend';
+
+const resend = new Resend(process.env.RESEND_API_KEY);
+
+interface WelcomeEmailParams {
+    to: string;
+    password: string;
+    creatorName?: string;
+    loginUrl?: string;
+}
+
+export async function sendWelcomeEmail({
+    to,
+    password,
+    creatorName = 'Helen',
+    loginUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://your-app.com'
+}: WelcomeEmailParams): Promise<{ success: boolean; error?: string }> {
+    try {
+        const { data, error } = await resend.emails.send({
+            from: `${creatorName} <noreply@${process.env.RESEND_DOMAIN || 'resend.dev'}>`,
+            to: [to],
+            subject: `🎉 ¡Bienvenido/a a ${creatorName}! Tus credenciales de acceso`,
+            html: `
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f5f5f5;">
+    <table role="presentation" style="width: 100%; border-collapse: collapse;">
+        <tr>
+            <td style="padding: 40px 20px;">
+                <table role="presentation" style="max-width: 500px; margin: 0 auto; background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
+                    <!-- Header -->
+                    <tr>
+                        <td style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 40px 30px; text-align: center;">
+                            <h1 style="color: #ffffff; margin: 0; font-size: 28px; font-weight: 700;">
+                                ¡Bienvenido/a! 🎉
+                            </h1>
+                        </td>
+                    </tr>
+                    
+                    <!-- Content -->
+                    <tr>
+                        <td style="padding: 40px 30px;">
+                            <p style="color: #333333; font-size: 16px; line-height: 1.6; margin: 0 0 20px;">
+                                ¡Gracias por tu compra! Tu cuenta ha sido creada exitosamente. Aquí están tus credenciales de acceso:
+                            </p>
+                            
+                            <!-- Credentials Box -->
+                            <div style="background-color: #f8f9fa; border-radius: 12px; padding: 24px; margin: 24px 0;">
+                                <table role="presentation" style="width: 100%;">
+                                    <tr>
+                                        <td style="padding: 8px 0;">
+                                            <span style="color: #666666; font-size: 14px;">📧 Email:</span>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td style="padding: 0 0 16px;">
+                                            <strong style="color: #333333; font-size: 16px;">${to}</strong>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td style="padding: 8px 0;">
+                                            <span style="color: #666666; font-size: 14px;">🔑 Contraseña:</span>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td>
+                                            <strong style="color: #333333; font-size: 18px; font-family: monospace; background-color: #e9ecef; padding: 8px 12px; border-radius: 6px; display: inline-block;">${password}</strong>
+                                        </td>
+                                    </tr>
+                                </table>
+                            </div>
+                            
+                            <!-- CTA Button -->
+                            <div style="text-align: center; margin: 32px 0;">
+                                <a href="${loginUrl}/login" style="display: inline-block; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #ffffff; text-decoration: none; padding: 14px 32px; border-radius: 8px; font-weight: 600; font-size: 16px;">
+                                    Iniciar Sesión
+                                </a>
+                            </div>
+                            
+                            <p style="color: #666666; font-size: 14px; line-height: 1.6; margin: 24px 0 0;">
+                                💡 <strong>Tip:</strong> Te recomendamos cambiar tu contraseña después de iniciar sesión por primera vez.
+                            </p>
+                        </td>
+                    </tr>
+                    
+                    <!-- Footer -->
+                    <tr>
+                        <td style="background-color: #f8f9fa; padding: 24px 30px; text-align: center; border-top: 1px solid #e9ecef;">
+                            <p style="color: #999999; font-size: 12px; margin: 0;">
+                                © ${new Date().getFullYear()} ${creatorName}. Todos los derechos reservados.
+                            </p>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>
+            `,
+        });
+
+        if (error) {
+            console.error('Email send error:', error);
+            return { success: false, error: error.message };
+        }
+
+        console.log(`Welcome email sent to ${to}, ID: ${data?.id}`);
+        return { success: true };
+    } catch (error: any) {
+        console.error('Email service error:', error);
+        return { success: false, error: error.message };
+    }
+}
