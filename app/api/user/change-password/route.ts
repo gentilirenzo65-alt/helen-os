@@ -25,7 +25,7 @@ export async function POST(req: Request) {
 
         // 3. Obtener usuario actual
         const user = await prisma.user.findUnique({
-            where: { id: session.userId }
+            where: { id: session.user.id }
         });
 
         if (!user) {
