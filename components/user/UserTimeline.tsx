@@ -17,7 +17,7 @@ interface UserTimelineProps {
 }
 
 type Tab = 'home' | 'favorites' | 'gallery';
-type Overlay = 'profile' | 'support-modal' | 'note-modal' | 'fullscreen' | null;
+type Overlay = 'profile' | 'support-modal' | 'note-modal' | 'fullscreen' | 'change-password' | null;
 
 // Gamification Constants
 const XP_PER_LEVEL = 100;
@@ -33,6 +33,11 @@ const UserTimeline: React.FC<UserTimelineProps> = ({ activationDate, subscriptio
   const [fullscreenMedia, setFullscreenMedia] = useState<{ items: MediaItem[], initialIndex: number, deliveryId: string } | null>(null);
   const [noteText, setNoteText] = useState('');
   const [supportUnreadCount, setSupportUnreadCount] = useState(0);
+
+  // Change Password State
+  const [changePassForm, setChangePassForm] = useState({ current: '', new: '', confirm: '' });
+  const [changePassStatus, setChangePassStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+  const [changePassMsg, setChangePassMsg] = useState('');
 
   // Floating XP Particles state
   const [particles, setParticles] = useState<{ id: number, x: number, y: number, val: string }[]>([]);
@@ -126,6 +131,51 @@ const UserTimeline: React.FC<UserTimelineProps> = ({ activationDate, subscriptio
   const handleOpenNote = (id: string) => {
     setSelectedDeliveryForNote(id);
     setActiveOverlay('note-modal');
+  };
+
+  const handleChangePassword = async () => {
+    if (changePassForm.new !== changePassForm.confirm) {
+      setChangePassStatus('error');
+      setChangePassMsg('Las contraseñas nuevas no coinciden');
+      return;
+    }
+    if (changePassForm.new.length < 6) {
+      setChangePassStatus('error');
+      setChangePassMsg('La contraseña debe tener al menos 6 caracteres');
+      return;
+    }
+
+    setChangePassStatus('loading');
+    try {
+      const res = await fetch('/api/user/change-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          currentPassword: changePassForm.current,
+          newPassword: changePassForm.new
+        })
+      });
+
+      const data = await res.json();
+
+      if (res.ok) {
+        setChangePassStatus('success');
+        setChangePassMsg('Contraseña actualizada correctamente');
+        setChangePassForm({ current: '', new: '', confirm: '' });
+        // Optional: Close after delay
+        setTimeout(() => {
+          setActiveOverlay('profile');
+          setChangePassStatus('idle');
+          setChangePassMsg('');
+        }, 2000);
+      } else {
+        setChangePassStatus('error');
+        setChangePassMsg(data.error || 'Error al cambiar contraseña');
+      }
+    } catch (error) {
+      setChangePassStatus('error');
+      setChangePassMsg('Error de conexión');
+    }
   };
 
   return (
@@ -242,6 +292,74 @@ const UserTimeline: React.FC<UserTimelineProps> = ({ activationDate, subscriptio
                   )}
                   <ProfileDetail label="Favoritos" value={`${favorites.length} guardados`} />
                 </div>
+
+                <button
+                  onClick={() => setActiveOverlay('change-password')}
+                  className="w-full mt-2 py-3 bg-white/5 border border-white/10 rounded-xl text-xs uppercase tracking-widest hover:bg-white/10 transition-all font-medium"
+                >
+                  Cambiar Contraseña
+                </button>
+              </div>
+            )}
+
+            {activeOverlay === 'change-password' && (
+              <div className="space-y-6">
+                <div className="text-center mb-6">
+                  <h3 className="text-xl font-bold text-white">Cambiar Contraseña</h3>
+                  <p className="text-xs text-white/40 mt-1">Ingresa tu contraseña actual y la nueva</p>
+                </div>
+
+                <div className="space-y-4">
+                  <div>
+                    <label className="text-[10px] uppercase tracking-widest text-white/40 block mb-1">Contraseña Actual</label>
+                    <input
+                      type="password"
+                      className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-sm text-white focus:border-[#e9c46a] outline-none transition-all"
+                      value={changePassForm.current}
+                      onChange={e => setChangePassForm({ ...changePassForm, current: e.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] uppercase tracking-widest text-white/40 block mb-1">Nueva Contraseña</label>
+                    <input
+                      type="password"
+                      className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-sm text-white focus:border-[#e9c46a] outline-none transition-all"
+                      value={changePassForm.new}
+                      onChange={e => setChangePassForm({ ...changePassForm, new: e.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] uppercase tracking-widest text-white/40 block mb-1">Confirmar Nueva</label>
+                    <input
+                      type="password"
+                      className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-sm text-white focus:border-[#e9c46a] outline-none transition-all"
+                      value={changePassForm.confirm}
+                      onChange={e => setChangePassForm({ ...changePassForm, confirm: e.target.value })}
+                    />
+                  </div>
+                </div>
+
+                {changePassMsg && (
+                  <div className={`text-xs text-center p-2 rounded ${changePassStatus === 'success' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
+                    {changePassMsg}
+                  </div>
+                )}
+
+                <div className="flex gap-3 pt-2">
+                  <button
+                    onClick={() => { setActiveOverlay('profile'); setChangePassMsg(''); setChangePassStatus('idle'); }}
+                    className="flex-1 py-3 bg-white/5 rounded-xl text-xs uppercase tracking-widest hover:bg-white/10 transition-all font-medium"
+                  >
+                    Volver
+                  </button>
+                  <button
+                    onClick={handleChangePassword}
+                    disabled={changePassStatus === 'loading' || !changePassForm.current || !changePassForm.new}
+                    className="flex-1 py-3 bg-[#e9c46a] text-black rounded-xl text-xs uppercase tracking-widest hover:bg-[#d4a373] transition-all font-bold disabled:opacity-50"
+                  >
+                    {changePassStatus === 'loading' ? '...' : 'Guardar'}
+                  </button>
+                </div>
               </div>
             )}
 
@@ -267,7 +385,8 @@ const UserTimeline: React.FC<UserTimelineProps> = ({ activationDate, subscriptio
             )}
           </div>
         </div>
-      )}
+      )
+      }
 
       {/* Header with Progress Bar */}
       <header className="px-5 h-14 flex items-center justify-between sticky top-0 z-50 bg-[#1a1418]/60 backdrop-blur-2xl border-b border-white/5">
@@ -410,7 +529,7 @@ const UserTimeline: React.FC<UserTimelineProps> = ({ activationDate, subscriptio
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
         </NavIcon>
       </nav>
-    </div>
+    </div >
   );
 };
 

@@ -1,31 +1,9 @@
-import { Resend } from 'resend';
-
-const resend = new Resend(process.env.RESEND_API_KEY);
-
-interface WelcomeEmailParams {
-    to: string;
-    password: string;
-    creatorName?: string;
-    loginUrl?: string;
-}
-
-export async function sendWelcomeEmail({
-    to,
-    password,
-    creatorName = 'Helen',
-    loginUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://your-app.com'
-}: WelcomeEmailParams): Promise<{ success: boolean; error?: string }> {
-    try {
-        const { data, error } = await resend.emails.send({
-            from: `${creatorName} <noreply@${process.env.RESEND_DOMAIN || 'resend.dev'}>`,
-            to: [to],
-            subject: `🎉 ¡Bienvenido/a a ${creatorName}! Tus credenciales de acceso`,
-            html: `
 <!DOCTYPE html>
 <html>
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vista Previa Email de Bienvenida</title>
 </head>
 <body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f5f5f5;">
     <table role="presentation" style="width: 100%; border-collapse: collapse;">
@@ -58,7 +36,7 @@ export async function sendWelcomeEmail({
                                     </tr>
                                     <tr>
                                         <td style="padding: 0 0 16px;">
-                                            <strong style="color: #333333; font-size: 16px;">${to}</strong>
+                                            <strong style="color: #333333; font-size: 16px;">ejemplo@usuario.com</strong>
                                         </td>
                                     </tr>
                                     <tr>
@@ -68,7 +46,7 @@ export async function sendWelcomeEmail({
                                     </tr>
                                     <tr>
                                         <td>
-                                            <strong style="color: #333333; font-size: 18px; font-family: monospace; background-color: #e9ecef; padding: 8px 12px; border-radius: 6px; display: inline-block;">${password}</strong>
+                                            <strong style="color: #333333; font-size: 18px; font-family: monospace; background-color: #e9ecef; padding: 8px 12px; border-radius: 6px; display: inline-block;">Contraseña123!</strong>
                                         </td>
                                     </tr>
                                 </table>
@@ -76,17 +54,13 @@ export async function sendWelcomeEmail({
                             
                             <!-- CTA Button -->
                             <div style="text-align: center; margin: 32px 0;">
-                                <a href="${loginUrl}/login" style="display: inline-block; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #ffffff; text-decoration: none; padding: 14px 32px; border-radius: 8px; font-weight: 600; font-size: 16px;">
+                                <a href="https://en.helensteward.shop/login" style="display: inline-block; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #ffffff; text-decoration: none; padding: 14px 32px; border-radius: 8px; font-weight: 600; font-size: 16px;">
                                     Iniciar Sesión
                                 </a>
                             </div>
                             
                             <p style="color: #666666; font-size: 14px; line-height: 1.6; margin: 24px 0 0;">
                                 💡 <strong>Tip:</strong> Te recomendamos cambiar tu contraseña después de iniciar sesión por primera vez.
-                            </p>
-                            
-                            <p style="color: #666666; font-size: 14px; line-height: 1.6; margin: 16px 0 0;">
-                                ¿Necesitas ayuda? Contáctanos en: <a href="mailto:support@helensteward.shop" style="color: #667eea; text-decoration: none;">support@helensteward.shop</a>
                             </p>
                         </td>
                     </tr>
@@ -95,7 +69,7 @@ export async function sendWelcomeEmail({
                     <tr>
                         <td style="background-color: #f8f9fa; padding: 24px 30px; text-align: center; border-top: 1px solid #e9ecef;">
                             <p style="color: #999999; font-size: 12px; margin: 0;">
-                                © ${new Date().getFullYear()} ${creatorName}. Todos los derechos reservados.
+                                © 2024 Helen Steward. Todos los derechos reservados.
                             </p>
                         </td>
                     </tr>
@@ -105,18 +79,3 @@ export async function sendWelcomeEmail({
     </table>
 </body>
 </html>
-            `,
-        });
-
-        if (error) {
-            console.error('Email send error:', error);
-            return { success: false, error: error.message };
-        }
-
-        console.log(`Welcome email sent to ${to}, ID: ${data?.id}`);
-        return { success: true };
-    } catch (error: any) {
-        console.error('Email service error:', error);
-        return { success: false, error: error.message };
-    }
-}
